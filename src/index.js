@@ -1,46 +1,40 @@
 import * as THREE from 'https://cdn.skypack.dev/three@0.130.0';
-import Cube from './Cube.js';
-
+import Ball from './Ball.js'
 
 let scene = null,
     camera = null,
     renderer = null,
-    light = null
+    lightUp = null,
+    lightBottom = null,
+    cube = null,
+    tween = null,
+    isTweening = false,
+    smokeParticles = []
 
 
 
-const rayEventListener = () => {
-  const raycaster = new THREE.Raycaster();
-  const mouse = new THREE.Vector2();
-
-  const getObjects = () => {
-    return scene.children.filter(c => c.name !== 'dome')
-  }
-
-  const onMouseMove = ( event ) =>{
-
+const mouseMoveListener = () => {
+  const coord = new THREE.Vector2();
+  
+  const mouseListener = ( event ) =>{
     // calculate mouse position in normalized device coordinates
     // (-1 to +1) for both components
-
-    mouse.x = ( event.clientX / window.innerWidth ) * 2 - 1;
-    mouse.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
-    raycaster.setFromCamera( mouse, camera );
-
-    // calculate objects intersecting the picking ray
-    const intersects = raycaster.intersectObjects( getObjects() );
-    let obj
-
-    for ( let i = 0; i < intersects.length; i ++ ) {
-
-      obj = Cube.find(intersects[i].object)
-
-      if(obj){
-        obj.handleMouseHover()
-      }
-
-    }
+    coord.x = ( event.clientX / window.innerWidth ) * 2 - 1;
+    coord.y = - ( event.clientY / window.innerHeight ) * 2 + 1;
+    scene.rotation.x = coord.y / 4
+    scene.rotation.y = coord.x / 4
   }
-  window.addEventListener( 'mousemove', onMouseMove, false );
+
+  const touchListener = (event) => {   
+    const touch = event.touches[0]
+    coord.x = (touch.pageX / window.innerWidth) * 2 - 1;
+    coord.y = (touch.pageY / window.innerHeight) * 2 - 1;
+    scene.rotation.x += coord.y / 50
+    scene.rotation.y += coord.x / 50  
+  }
+
+  window.addEventListener( 'mousemove', mouseListener, false );
+  window.addEventListener( 'touchmove', touchListener, false );
 }
 
 
@@ -55,41 +49,30 @@ export const onWindowResize = () => {
 }
 
 
-const tweenCamera = () => {
-
-  new TWEEN.Tween(camera.position)
-  .to({x: [5, 0, -5, 0]}, 18000)
-  .onUpdate(() => {
-    camera.lookAt(new THREE.Vector3())
-    camera.updateProjectionMatrix()
-  })
-  .repeat(Infinity)
-  .start()
-}
 
 const addLight = () => {
-  light = new THREE.SpotLight( 0xffffff, 0.8, 100, 1.4, 0.2, 2)
-  light.position.set(0, 5, 10)
-  light.target = new THREE.Object3D()
-  light.target.position.set(0, 5, 0)
-  light.castShadow = true
-  light.shadow.mapSize.width = 2048 ;
-  light.shadow.mapSize.height = 2048;
+  lightUp = new THREE.SpotLight( 0xddffdd, 1, 700, 1, 1, 2)
+  lightUp.position.set(0, 124, 124)
+  lightUp.target = new THREE.Object3D()
+  lightUp.target.position.set(0, 0, -124)
+  lightUp.castShadow = true
+  lightUp.shadow.mapSize.width = 2048;
+  lightUp.shadow.mapSize.height = 2048;
 
-  light.shadow.camera.near = 1;
-  light.shadow.camera.far = 100;
-  light.shadow.camera.fov = 75;
-  scene.add( light );
-  scene.add( light.target)
-  
+  lightUp.shadow.camera.near = .1;
+  lightUp.shadow.camera.far = 250;
+  lightUp.shadow.camera.fov = 75;
+
+  lightBottom = lightUp.clone()
+  lightBottom.position.set(0, -120, 120)
+  scene.add( lightUp, lightBottom );
+  scene.add( lightUp.target)
 }
 
 const init = () => {
   scene = new THREE.Scene();
-  scene.background = new THREE.Color(0xEDF6FF)
-  camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 1, 10000 );
-  camera.lookAt(new THREE.Vector3(0, 0, 0))
-  camera.position.set(0, 0, 10)
+  
+  camera = new THREE.PerspectiveCamera( 75, window.innerWidth / window.innerHeight, 1, 1000 );
 
   renderer = new THREE.WebGL1Renderer({antialias: true});
   renderer.setSize( window.innerWidth, window.innerHeight );
@@ -99,43 +82,70 @@ const init = () => {
   document.body.appendChild( renderer.domElement );
   
   addLight()
+  camera.lookAt(lightUp.target.position)
   initEventListeners()
-  tweenCamera()
-  addPlane()
-  createCubes(7)
+  addCube()
+  addBalls(10)
+  // addSmoke()
   _animate()
 
 }
 
-const addPlane = () => {
-  let g, m, mesh
-  g = new THREE.PlaneGeometry(250, 250)
-  m = new THREE.MeshPhongMaterial({color: new THREE.Color(0x2223a7)})
-  mesh = new THREE.Mesh(g, m)
-  mesh.position.set(0, 0, -10)
-  mesh.receiveShadow = true
-  scene.add(mesh)
+const addBalls = (qtd) => {
+  for(let i = 0; i < qtd; i++){
+    new Ball(scene)
+  }
+}
+
+const addCube = () => {
+  let g, m
+  g = new THREE.BoxGeometry(250, 250, 250)
+  m = new THREE.MeshPhongMaterial({color: new THREE.Color(0x82BF46), side:THREE.DoubleSide})
+  cube = new THREE.Mesh(g, m)
+  cube.receiveShadow = true
+  // cube.castShadow = true
+  scene.add(cube)
 }
 
 
 const initEventListeners = () => {  
   resizeListener()
-  rayEventListener()
+  mouseMoveListener()
 }
 
-const createCubes = (qtd = 5) => {
-  let word = ['f','e','r','i','a','p','p',]
-  for(let i = 0; i < word.length; i++){
-    new Cube(scene, word[i])
-  }
+
+
+
+
+const cubeRoutine = () => {
+  cube.geometry.computeBoundingBox()
+}
+
+const cameraRoutine = () => {  
+  camera.lookAt(lightUp.target.position.x, lightUp.target.position.y, lightUp.target.position.z)
+  camera.updateProjectionMatrix()
+}
+
+
+const addSmoke = () => {
+  const map = new THREE.TextureLoader().load( 'https://webstockreview.net/images/steam-smoke-png-6.png' );
+  const material = new THREE.SpriteMaterial( { map: map, color: 0xdede23 } );
+
+  const sprite = new THREE.Sprite( material );
+  sprite.scale.set(100, 80, 10)
+  sprite.position.set(-20, 0, -20)
+  sprite.castShadow = true
+  sprite.receiveShadow = true
+  scene.add( sprite );
 }
 
 
 const _animate = () => {
 	requestAnimationFrame( _animate );
-
   TWEEN.update()
-  Cube.update()
+  cubeRoutine()
+  cameraRoutine()
+  Ball.update(cube)
 	renderer.render( scene, camera );
 }
 init()
